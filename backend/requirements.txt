@@ -1,0 +1,23 @@
+# --- API ---
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+
+# --- data / modeling ---
+pydantic>=2.7
+numpy>=1.26,<3.0
+pandas>=2.2
+scikit-learn>=1.4
+xgboost>=2.0
+
+# --- foundation model (zero-shot forecasting) ---
+# In Docker, CPU-only torch is installed first (see Dockerfile) so this is a no-op there.
+torch>=2.2
+chronos-forecasting>=2.0
+
+# --- MLOps ---
+mlflow>=2.14
+joblib>=1.4
+
+# --- dev / test ---
+pytest>=8.2
+httpx>=0.27
