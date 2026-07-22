@@ -1,8 +1,13 @@
-"""Synthetic series generation and feature engineering."""
+"""Data loading (real retail series + synthetic) and feature engineering."""
 from __future__ import annotations
+
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+# daily online-retail sales series, built by backend/data/prepare_dataset.py
+RETAIL_CSV = Path(__file__).resolve().parent.parent / "data" / "online_retail_daily.csv"
 
 # lag + calendar features for the xgboost baseline
 FEATURE_COLUMNS = [
@@ -37,6 +42,20 @@ def load_series_from_records(records: list[dict]) -> pd.DataFrame:
     df["date"] = pd.to_datetime(df["date"])
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     df = df.dropna(subset=["value"]).sort_values("date").reset_index(drop=True)
+    return df[["date", "value"]]
+
+
+def load_retail_series() -> pd.DataFrame:
+    """Daily online-retail sales revenue on a gap-free daily calendar.
+
+    Closed days (no sales) are kept as 0 so the weekly pattern stays intact.
+    """
+    df = pd.read_csv(RETAIL_CSV)
+    df["date"] = pd.to_datetime(df["date"])
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
+    df = df.dropna(subset=["value"]).sort_values("date")
+    full = pd.date_range(df["date"].min(), df["date"].max(), freq="D")
+    df = df.set_index("date").reindex(full).fillna(0.0).rename_axis("date").reset_index()
     return df[["date", "value"]]
 
 

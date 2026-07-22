@@ -5,13 +5,13 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .data import generate_synthetic_series, load_series_from_records
+from .data import load_retail_series, load_series_from_records
 from .forecaster import XGBoostForecaster, chronos_forecast, compare_models
 from .schemas import CompareRequest, ForecastRequest
 
 app = FastAPI(
-    title="Time-Series Forecasting API",
-    description="Compare a zero-shot foundation model (Chronos-Bolt) with a trained XGBoost baseline.",
+    title="Sales Forecasting API",
+    description="Forecast daily online-retail sales with a zero-shot foundation model (Chronos-Bolt) and a trained XGBoost baseline.",
     version="1.0.0",
 )
 
@@ -24,13 +24,13 @@ app.add_middleware(
 
 
 def _resolve_df(series) -> pd.DataFrame:
-    """Use the caller's series if given, else fall back to synthetic demo data."""
+    """Use the caller's series if given, else the built-in retail sales series."""
     if series:
         df = load_series_from_records([{"date": p.date, "value": p.value} for p in series])
         if len(df) < 60:
             raise HTTPException(400, "Provide at least 60 data points for reliable forecasting.")
         return df
-    return generate_synthetic_series()
+    return load_retail_series()
 
 
 @app.get("/health", tags=["ops"])
@@ -40,8 +40,8 @@ def health():
 
 @app.get("/api/demo-series", tags=["data"])
 def demo_series(n_days: int = 730):
-    """Synthetic history for the frontend to plot."""
-    df = generate_synthetic_series(n_days=n_days)
+    """Recent daily sales history for the frontend to plot."""
+    df = load_retail_series().tail(n_days)
     return {
         "dates": [d.strftime("%Y-%m-%d") for d in df["date"]],
         "values": [round(v, 4) for v in df["value"]],

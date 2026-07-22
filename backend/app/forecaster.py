@@ -31,11 +31,14 @@ def evaluate_forecast(actual, predicted) -> dict[str, float]:
     actual = np.asarray(actual, dtype=float)
     predicted = np.asarray(predicted, dtype=float)
     err = actual - predicted
-    denom = np.where(np.abs(actual) < 1e-8, 1e-8, np.abs(actual))
+    # MAPE is undefined when actual == 0 (closed days), so average it over the
+    # non-zero points only; MAE/RMSE/sMAPE use every point.
+    nz = np.abs(actual) > 1e-8
+    mape = float(np.mean(np.abs(err[nz] / actual[nz])) * 100) if nz.any() else 0.0
     return {
         "mae": round(float(np.mean(np.abs(err))), 4),
         "rmse": round(float(np.sqrt(np.mean(err ** 2))), 4),
-        "mape": round(float(np.mean(np.abs(err) / denom) * 100), 4),
+        "mape": round(mape, 4),
         "smape": round(float(np.mean(2 * np.abs(err) / (np.abs(actual) + np.abs(predicted) + 1e-8)) * 100), 4),
     }
 
