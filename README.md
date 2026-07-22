@@ -1,9 +1,9 @@
-# Time-series forecasting: Chronos-Bolt vs XGBoost
+# Daily sales forecasting: Chronos-Bolt vs XGBoost
 
 Daily forecasting app that compares Amazon's Chronos-Bolt (a zero-shot foundation
-model) with an XGBoost baseline you train yourself. FastAPI backend, Next.js
-frontend, and the deployment plumbing to go with it: Docker, compose, Kubernetes
-on kind, and GitHub Actions.
+model) with an XGBoost baseline you train yourself, on ~2 years of real
+online-retail sales. FastAPI backend, Next.js frontend, and the deployment
+plumbing to go with it: Docker, compose, Kubernetes on kind, and GitHub Actions.
 
 ![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -44,16 +44,40 @@ same in both places without a rebuild.
 - Two models behind one API: Chronos-Bolt (no training) and XGBoost (lag +
   calendar features, recursive multi-step).
 - Median forecast plus an 80% interval.
-- Backtest: hold out the last N days and score MAE / RMSE / MAPE / sMAPE.
+- Backtest: hold out recent days and score MAE / RMSE / MAPE / sMAPE, plus a
+  rolling-window backtest script for a fairer read than a single holdout.
 - Small UI to pick a horizon and model, run a forecast or a backtest, and see the
   chart and metrics.
-- No data of its own required. There's a synthetic daily series built in; point it
-  at your own CSV when you have one.
+- Runs on real data out of the box — a daily online-retail sales series is
+  bundled; the API also accepts your own series in the request body.
 
 Chronos-Bolt is pretrained on a large corpus of series, so it forecasts a new
 series without any fitting — you just hand it the history. XGBoost needs features
 and a fit per series. Which one wins depends on the data, which is what the
 backtest is for.
+
+## Data & EDA
+
+The bundled series is **UCI Online Retail II** — ~1M invoice lines from a UK
+online store (Dec 2009 – Dec 2011), aggregated to **daily sales revenue** by
+`backend/data/prepare_dataset.py` (actual sales only; returns and bad prices
+dropped). The result is `backend/data/online_retail_daily.csv`, 739 daily points.
+
+Exploratory analysis is in [`notebooks/eda.ipynb`](notebooks/eda.ipynb). The main
+findings:
+
+| Finding | Detail |
+|---|---|
+| Trend | 30-day average roughly doubled, ~£27.5k → ~£56.5k |
+| Weekly seasonality | Mon–Thu highest, Sun lower, **Saturday ≈ £0 (store closed)**; ACF peaks at lag 7 (0.58) |
+| Distribution | right-skewed (skew 1.8); the big pre-Christmas days are real, not errors |
+| STL strength | trend 0.50, seasonal 0.56 |
+
+Cleaning stays light: after aggregation the series is already a gap-free daily
+calendar, and closed days are kept as £0 so the weekly pattern stays intact.
+Because of those zeros, MAE/RMSE are the reliable scores (MAPE is computed over
+non-zero days only). Install `notebooks/requirements.txt` and run the notebook to
+regenerate its charts into `docs/`.
 
 ## Run it (docker compose)
 
@@ -86,7 +110,7 @@ uvicorn app.main:app --reload
 pytest -q      # the Chronos test is skipped unless RUN_CHRONOS_TESTS=1
 ```
 
-Training logs to MLflow and saves the fitted model:
+Train the XGBoost model (logs to MLflow, saves the fitted model):
 
 ```bash
 cd backend
@@ -94,23 +118,22 @@ python -m training.train_xgboost --horizon 21 --mlflow
 mlflow ui      # http://localhost:5000
 ```
 
-The model is written to `backend/app/models/xgb_model.joblib` (refit on the full
-history), and params/metrics/artifact go to the `timeseries-forecasting`
-experiment.
+### Backtest results (rolling window)
 
-### Backtest numbers
+`python -m training.backtest --horizon 21 --folds 6` holds out several recent
+windows instead of just the last one and averages the scores. On the retail
+series:
 
-21-day holdout on the built-in synthetic series, from
-`python -m training.train_xgboost --horizon 21`. Lower is better; your numbers
-will move with the horizon and the data.
+| Model | MAE (£) | RMSE (£) | sMAPE % |
+|---|---|---|---|
+| XGBoost (trained) | 12,740 | 18,787 | 56.4 |
+| Chronos-Bolt (zero-shot) | _run to fill in_ | _—_ | _—_ |
 
-| Model | MAE | RMSE | MAPE % | sMAPE % |
-|---|---|---|---|---|
-| Chronos-Bolt (zero-shot) | 2.79 | 3.26 | 2.10 | 2.10 |
-| XGBoost (trained) | 6.31 | 7.64 | 4.75 | 4.93 |
-
-On this particular series Chronos wins without any training. That won't always be
-true on real data, so run the backtest on yours.
+Notes: the errors are large because the recent windows span the volatile
+pre-Christmas surge and the weekly Saturday closures — a deliberately hard test.
+Chronos needs its pretrained weights and the `transformers` stack, so run the
+command in Docker/Codespaces (or click **Backtest & compare** in the app) to fill
+in its row.
 
 ## Kubernetes (kind)
 
@@ -172,42 +195,42 @@ Forking? Change that namespace in `k8s/*.yaml` and `scripts/deploy-kind.sh`.
 
 | Layer | Tech |
 |---|---|
+| Data | UCI Online Retail II, aggregated to daily sales |
 | Foundation model | Chronos-Bolt (`amazon/chronos-bolt-small`) |
 | Baseline | XGBoost + scikit-learn, lag/calendar features |
 | Backend | FastAPI, Pydantic, pandas, NumPy |
+| Analysis | Jupyter, statsmodels, seaborn |
 | Tracking | MLflow, joblib |
 | Frontend | Next.js 14 (App Router, TS), Recharts |
 | Packaging | Docker (multi-stage, non-root), compose |
 | Orchestration | Kubernetes, kind, ingress-nginx |
-| Dev env | Codespaces devcontainer |
 | CI/CD | GitHub Actions -> GHCR |
 
 ## Screenshots
 
-Add your own under `docs/` and link them here.
-
-| Forecast | Backtest |
-|---|---|
-| ![Forecast](docs/screenshot-forecast.png) | ![Backtest](docs/screenshot-backtest.png) |
+Run the app and drop screenshots in `docs/` (forecast view, backtest view). The
+EDA notebook also writes its charts there when you run it.
 
 ## API
 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/health` | `{ "status": "ok" }` |
-| GET | `/api/demo-series?n_days=730` | synthetic history |
+| GET | `/api/demo-series?n_days=730` | recent daily sales history |
 | POST | `/api/forecast` | `{ horizon, model: "chronos"\|"xgboost"\|"both", series? }` |
 | POST | `/api/compare` | backtest both models: `{ horizon, series? }` |
 
-Leave out `series` and it uses the built-in 730-day synthetic series.
+Leave out `series` and it uses the bundled retail series.
 
 ## Layout
 
 ```
 backend/            FastAPI app, forecasters, training, tests
   app/              data.py, forecaster.py, schemas.py, main.py
-  training/         train_xgboost.py
+  data/             online_retail_daily.csv + prepare_dataset.py
+  training/         train_xgboost.py, backtest.py
 frontend/           Next.js app
+notebooks/          eda.ipynb + requirements.txt
 k8s/                namespace, deployments, services, ingress, kind-config
 .devcontainer/      Codespaces setup
 .github/workflows/  ci-cd.yml
