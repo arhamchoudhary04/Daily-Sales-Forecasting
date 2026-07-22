@@ -122,18 +122,19 @@ mlflow ui      # http://localhost:5000
 
 `python -m training.backtest --horizon 21 --folds 6` holds out several recent
 windows instead of just the last one and averages the scores. On the retail
-series:
+series (lower is better):
 
-| Model | MAE (£) | RMSE (£) | sMAPE % |
-|---|---|---|---|
-| XGBoost (trained) | 12,740 | 18,787 | 56.4 |
-| Chronos-Bolt (zero-shot) | _run to fill in_ | _—_ | _—_ |
+| Model | MAE (£) | RMSE (£) | MAPE % | sMAPE % |
+|---|---|---|---|---|
+| Chronos-Bolt (zero-shot) | 12,400 | 18,909 | **28.3** | 54.4 |
+| XGBoost (trained) | **12,129** | **18,155** | 36.4 | 55.3 |
 
-Notes: the errors are large because the recent windows span the volatile
-pre-Christmas surge and the weekly Saturday closures — a deliberately hard test.
-Chronos needs its pretrained weights and the `transformers` stack, so run the
-command in Docker/Codespaces (or click **Backtest & compare** in the app) to fill
-in its row.
+On real data it's close: the trained XGBoost narrowly wins the absolute-error
+scores (MAE/RMSE), while zero-shot Chronos is clearly better on MAPE — and it does
+that with **no training at all**. The absolute errors are large because the
+windows span the volatile pre-Christmas surge and the weekly Saturday closures, a
+deliberately hard test. Reproduce with the command above, or click
+**Backtest & compare** in the app.
 
 ## Kubernetes (kind)
 
