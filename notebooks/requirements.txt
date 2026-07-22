@@ -1,0 +1,7 @@
+# Extras for the EDA notebook and the one-off data prep.
+# (pandas / numpy come from backend/requirements.txt)
+jupyter
+matplotlib
+seaborn
+statsmodels
+openpyxl
