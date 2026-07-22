@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Time-Series Forecasting — Chronos vs XGBoost",
+  title: "Daily Sales Forecasting — Chronos vs XGBoost",
   description:
-    "Zero-shot foundation model (Chronos-Bolt) vs trained XGBoost, served with FastAPI and deployed on Docker + Kubernetes.",
+    "Forecasting daily online-retail sales revenue: zero-shot Chronos-Bolt vs a trained XGBoost baseline, served with FastAPI and deployed on Docker + Kubernetes.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
