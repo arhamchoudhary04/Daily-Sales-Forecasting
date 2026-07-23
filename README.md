@@ -126,15 +126,15 @@ series (lower is better):
 
 | Model | MAE (£) | RMSE (£) | MAPE % | sMAPE % |
 |---|---|---|---|---|
-| Chronos-Bolt (zero-shot) | 12,400 | 18,909 | **28.3** | 54.4 |
-| XGBoost (trained) | **12,129** | **18,155** | 36.4 | 55.3 |
+| Chronos-Bolt (zero-shot) | 12,400 | 18,909 | **28.3** | **54.4** |
+| XGBoost (trained, tuned) | **12,030** | **17,277** | 36.8 | 55.8 |
 
-On real data it's close: the trained XGBoost narrowly wins the absolute-error
-scores (MAE/RMSE), while zero-shot Chronos is clearly better on MAPE — and it does
-that with **no training at all**. The absolute errors are large because the
-windows span the volatile pre-Christmas surge and the weekly Saturday closures, a
-deliberately hard test. Reproduce with the command above, or click
-**Backtest & compare** in the app.
+On real data it's close: after tuning its hyperparameters on the backtest, the
+trained XGBoost edges ahead on absolute error (MAE/RMSE), while zero-shot Chronos
+stays clearly better on MAPE — with **no training at all**. Absolute errors are
+large because the windows span the volatile pre-Christmas surge and the weekly
+Saturday closures, a deliberately hard test. Reproduce with the command above, or
+click **Backtest & compare** in the app.
 
 ## Kubernetes (kind)
 
