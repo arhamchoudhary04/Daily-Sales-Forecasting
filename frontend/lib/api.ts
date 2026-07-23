@@ -33,6 +33,7 @@ export interface Metrics {
 export interface CompareResponse {
   dates: string[];
   actual: number[];
+  folds?: number;
   models: Record<string, { forecast: ModelForecast; metrics: Metrics }>;
 }
 

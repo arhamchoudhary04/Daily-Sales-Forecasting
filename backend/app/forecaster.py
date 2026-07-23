@@ -149,26 +149,62 @@ class XGBoostForecaster:
 
 # --- backtest ---
 
-def compare_models(df: pd.DataFrame, horizon: int) -> dict:
-    """Hold out the last `horizon` points, forecast with both, and score.
+def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
+    """Rolling-window backtest: score each model over the last `folds`
+    non-overlapping windows and average, and return the most-recent window
+    (actual + forecast) for plotting.
 
-    Chronos is optional: if its pretrained model can't load (e.g. a restricted
-    environment), the backtest still returns the XGBoost result.
+    A single last-window holdout is misleading here — the series ends on the
+    volatile pre-Christmas peak — so averaging several windows gives a fairer
+    read. Chronos is optional: if its model can't load, only XGBoost is scored.
     """
-    train, test = df.iloc[:-horizon], df.iloc[-horizon:]
-    actual = test["value"].tolist()
+    scores: dict[str, list[dict]] = {"chronos-bolt": [], "xgboost": []}
+    recent: dict = {}
+    recent_test = None
+    used = 0
+
+    for i in range(folds):
+        end = len(df) - i * horizon
+        start = end - horizon
+        if start < 60:
+            break
+        used += 1
+        train, test = df.iloc[:start], df.iloc[start:end]
+        actual = test["value"].tolist()
+
+        xgb = XGBoostForecaster().fit(train).predict(horizon)
+        scores["xgboost"].append(evaluate_forecast(actual, xgb.median))
+
+        chronos = None
+        try:
+            chronos = chronos_forecast(train["value"].tolist(), horizon)
+            scores["chronos-bolt"].append(evaluate_forecast(actual, chronos.median))
+        except Exception:  # noqa: BLE001 - Chronos is best-effort
+            pass
+
+        if i == 0:  # most recent window -> what the chart shows
+            recent_test = test
+            recent["xgboost"] = xgb
+            if chronos is not None:
+                recent["chronos-bolt"] = chronos
+
+    def _avg(rows: list[dict]) -> dict:
+        return {k: round(float(np.mean([r[k] for r in rows])), 4) for k in rows[0]}
 
     models: dict = {}
-    try:
-        chronos = chronos_forecast(train["value"].tolist(), horizon)
-        models["chronos-bolt"] = {"forecast": chronos.to_dict(), "metrics": evaluate_forecast(actual, chronos.median)}
-    except Exception:  # noqa: BLE001 - Chronos is best-effort
-        pass
-    xgb = XGBoostForecaster().fit(train).predict(horizon)
-    models["xgboost"] = {"forecast": xgb.to_dict(), "metrics": evaluate_forecast(actual, xgb.median)}
+    if scores["chronos-bolt"] and "chronos-bolt" in recent:
+        models["chronos-bolt"] = {
+            "forecast": recent["chronos-bolt"].to_dict(),
+            "metrics": _avg(scores["chronos-bolt"]),
+        }
+    models["xgboost"] = {
+        "forecast": recent["xgboost"].to_dict(),
+        "metrics": _avg(scores["xgboost"]),
+    }
 
     return {
-        "dates": [d.strftime("%Y-%m-%d") for d in test["date"]],
-        "actual": [round(v, 4) for v in actual],
+        "dates": [d.strftime("%Y-%m-%d") for d in recent_test["date"]],
+        "actual": [round(v, 4) for v in recent_test["value"].tolist()],
+        "folds": used,
         "models": models,
     }
