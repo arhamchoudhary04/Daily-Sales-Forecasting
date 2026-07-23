@@ -57,7 +57,11 @@ def forecast(req: ForecastRequest):
 
     out: dict = {"horizon": req.horizon, "future_dates": future_dates, "models": {}}
     if req.model in ("chronos", "both"):
-        out["models"]["chronos-bolt"] = chronos_forecast(df["value"].tolist(), req.horizon).to_dict()
+        try:
+            out["models"]["chronos-bolt"] = chronos_forecast(df["value"].tolist(), req.horizon).to_dict()
+        except Exception as exc:  # noqa: BLE001 - Chronos is best-effort
+            if req.model == "chronos":
+                raise HTTPException(503, "Chronos model is unavailable in this environment.") from exc
     if req.model in ("xgboost", "both"):
         out["models"]["xgboost"] = XGBoostForecaster().fit(df).predict(req.horizon).to_dict()
     return out
