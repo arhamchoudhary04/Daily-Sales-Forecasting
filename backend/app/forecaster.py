@@ -149,6 +149,19 @@ class XGBoostForecaster:
 
 # --- backtest ---
 
+def ensemble_forecast(a: ForecastResult, b: ForecastResult) -> ForecastResult:
+    """Equal-weight average of two forecasts — usually beats either alone,
+    because the two models make different mistakes."""
+    mean = lambda xs, ys: [round((x + y) / 2, 4) for x, y in zip(xs, ys)]
+    return ForecastResult(
+        model="ensemble",
+        horizon=a.horizon,
+        median=mean(a.median, b.median),
+        lower=mean(a.lower, b.lower),
+        upper=mean(a.upper, b.upper),
+    )
+
+
 def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
     """Rolling-window backtest: score each model over the last `folds`
     non-overlapping windows and average, and return the most-recent window
@@ -156,9 +169,10 @@ def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
 
     A single last-window holdout is misleading here — the series ends on the
     volatile pre-Christmas peak — so averaging several windows gives a fairer
-    read. Chronos is optional: if its model can't load, only XGBoost is scored.
+    read. Chronos is optional: if its model can't load, only XGBoost is scored
+    (and the ensemble is skipped, since it needs both).
     """
-    scores: dict[str, list[dict]] = {"chronos-bolt": [], "xgboost": []}
+    scores: dict[str, list[dict]] = {"chronos-bolt": [], "xgboost": [], "ensemble": []}
     recent: dict = {}
     recent_test = None
     used = 0
@@ -179,6 +193,8 @@ def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
         try:
             chronos = chronos_forecast(train["value"].tolist(), horizon)
             scores["chronos-bolt"].append(evaluate_forecast(actual, chronos.median))
+            ens = ensemble_forecast(chronos, xgb)
+            scores["ensemble"].append(evaluate_forecast(actual, ens.median))
         except Exception:  # noqa: BLE001 - Chronos is best-effort
             pass
 
@@ -187,20 +203,17 @@ def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
             recent["xgboost"] = xgb
             if chronos is not None:
                 recent["chronos-bolt"] = chronos
+                recent["ensemble"] = ensemble_forecast(chronos, xgb)
 
     def _avg(rows: list[dict]) -> dict:
         return {k: round(float(np.mean([r[k] for r in rows])), 4) for k in rows[0]}
 
     models: dict = {}
     if scores["chronos-bolt"] and "chronos-bolt" in recent:
-        models["chronos-bolt"] = {
-            "forecast": recent["chronos-bolt"].to_dict(),
-            "metrics": _avg(scores["chronos-bolt"]),
-        }
-    models["xgboost"] = {
-        "forecast": recent["xgboost"].to_dict(),
-        "metrics": _avg(scores["xgboost"]),
-    }
+        models["chronos-bolt"] = {"forecast": recent["chronos-bolt"].to_dict(), "metrics": _avg(scores["chronos-bolt"])}
+    models["xgboost"] = {"forecast": recent["xgboost"].to_dict(), "metrics": _avg(scores["xgboost"])}
+    if scores["ensemble"] and "ensemble" in recent:
+        models["ensemble"] = {"forecast": recent["ensemble"].to_dict(), "metrics": _avg(scores["ensemble"])}
 
     return {
         "dates": [d.strftime("%Y-%m-%d") for d in recent_test["date"]],

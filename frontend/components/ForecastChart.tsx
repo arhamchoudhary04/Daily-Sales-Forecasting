@@ -18,6 +18,7 @@ export interface ChartPoint {
   actual?: number;
   chronos?: number;
   xgboost?: number;
+  ensemble?: number;
   band?: [number, number]; // [lower, upper] prediction interval
 }
 
@@ -27,6 +28,7 @@ const GRID = "#e8e6df";
 const AXIS = "#d8d6cd";
 const CHRONOS = "#2a78d6";
 const XGBOOST = "#eb6834";
+const ENSEMBLE = "#1baf7a";
 
 const gbp = (v: number) => "£" + Math.round(v).toLocaleString("en-GB");
 const axisGbp = (v: any) =>
@@ -93,6 +95,15 @@ export default function ForecastChart({ data }: { data: ChartPoint[] }) {
           stroke={XGBOOST}
           dot={false}
           strokeWidth={2}
+          connectNulls
+          isAnimationActive={false}
+        />
+        <Line
+          dataKey="ensemble"
+          name="Ensemble"
+          stroke={ENSEMBLE}
+          dot={false}
+          strokeWidth={2.5}
           connectNulls
           isAnimationActive={false}
         />

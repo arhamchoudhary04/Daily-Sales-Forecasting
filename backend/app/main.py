@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .data import load_retail_series, load_series_from_records
-from .forecaster import XGBoostForecaster, chronos_forecast, compare_models
+from .forecaster import XGBoostForecaster, chronos_forecast, compare_models, ensemble_forecast
 from .schemas import CompareRequest, ForecastRequest
 
 app = FastAPI(
@@ -50,20 +50,34 @@ def demo_series(n_days: int = 730):
 
 @app.post("/api/forecast", tags=["forecast"])
 def forecast(req: ForecastRequest):
-    """Forecast future values (no ground truth) with one or both models."""
+    """Forecast future values (no ground truth) with one, both, or the ensemble."""
     df = _resolve_df(req.series)
     last = df["date"].iloc[-1]
     future_dates = [(last + pd.Timedelta(days=i + 1)).strftime("%Y-%m-%d") for i in range(req.horizon)]
 
-    out: dict = {"horizon": req.horizon, "future_dates": future_dates, "models": {}}
-    if req.model in ("chronos", "both"):
+    # Compute whichever base models the request needs (ensemble needs both).
+    chronos = None
+    if req.model in ("chronos", "both", "ensemble"):
         try:
-            out["models"]["chronos-bolt"] = chronos_forecast(df["value"].tolist(), req.horizon).to_dict()
+            chronos = chronos_forecast(df["value"].tolist(), req.horizon)
         except Exception as exc:  # noqa: BLE001 - Chronos is best-effort
             if req.model == "chronos":
                 raise HTTPException(503, "Chronos model is unavailable in this environment.") from exc
-    if req.model in ("xgboost", "both"):
-        out["models"]["xgboost"] = XGBoostForecaster().fit(df).predict(req.horizon).to_dict()
+
+    xgb = None
+    if req.model in ("xgboost", "both", "ensemble"):
+        xgb = XGBoostForecaster().fit(df).predict(req.horizon)
+
+    out: dict = {"horizon": req.horizon, "future_dates": future_dates, "models": {}}
+    if req.model in ("chronos", "both") and chronos is not None:
+        out["models"]["chronos-bolt"] = chronos.to_dict()
+    if req.model in ("xgboost", "both") and xgb is not None:
+        out["models"]["xgboost"] = xgb.to_dict()
+    if req.model == "ensemble":
+        if chronos is not None and xgb is not None:
+            out["models"]["ensemble"] = ensemble_forecast(chronos, xgb).to_dict()
+        elif xgb is not None:  # Chronos unavailable -> fall back to XGBoost
+            out["models"]["xgboost"] = xgb.to_dict()
     return out
 
 

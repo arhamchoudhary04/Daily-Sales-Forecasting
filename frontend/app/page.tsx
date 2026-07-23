@@ -20,6 +20,7 @@ const ForecastChart = dynamic(() => import("@/components/ForecastChart"), {
 
 const CHRONOS = "chronos-bolt";
 const XGBOOST = "xgboost";
+const ENSEMBLE = "ensemble";
 const HISTORY_WINDOW = 90;
 const PREVIEW_WINDOW = 120;
 
@@ -33,7 +34,7 @@ function clampHorizon(value: number): number {
 export default function Page() {
   const [demo, setDemo] = useState<DemoSeries | null>(null);
   const [horizon, setHorizon] = useState(21);
-  const [model, setModel] = useState<"both" | "chronos" | "xgboost">("both");
+  const [model, setModel] = useState<"both" | "chronos" | "xgboost" | "ensemble">("both");
 
   const [chart, setChart] = useState<ChartPoint[]>([]);
   const [compare, setCompare] = useState<CompareResponse | null>(null);
@@ -72,19 +73,22 @@ export default function Page() {
 
       const chronos = res.models[CHRONOS];
       const xgb = res.models[XGBOOST];
+      const ens = res.models[ENSEMBLE];
 
       // connect the model lines to the last history point
       const bridge = hist[hist.length - 1];
       if (bridge) {
         if (chronos) bridge.chronos = bridge.history;
         if (xgb) bridge.xgboost = bridge.history;
+        if (ens) bridge.ensemble = bridge.history;
       }
 
       const future: ChartPoint[] = res.future_dates.map((date, i) => {
         const point: ChartPoint = { date };
         if (chronos) point.chronos = chronos.median[i];
         if (xgb) point.xgboost = xgb.median[i];
-        const band = chronos ?? xgb; // chronos band if we have it, else xgboost
+        if (ens) point.ensemble = ens.median[i];
+        const band = chronos ?? xgb ?? ens; // interval from whichever we have
         if (band) point.band = [band.lower[i], band.upper[i]];
         return point;
       });
@@ -179,6 +183,7 @@ export default function Page() {
               <option value="both">Both</option>
               <option value="chronos">Chronos-Bolt (zero-shot)</option>
               <option value="xgboost">XGBoost (trained)</option>
+              <option value="ensemble">Ensemble (most accurate)</option>
             </select>
           </div>
           <div className="actions">

@@ -11,7 +11,7 @@ class SeriesPoint(BaseModel):
 
 class ForecastRequest(BaseModel):
     horizon: int = Field(default=14, ge=1, le=90, description="Days to forecast ahead")
-    model: str = Field(default="both", pattern="^(chronos|xgboost|both)$")
+    model: str = Field(default="both", pattern="^(chronos|xgboost|both|ensemble)$")
     series: list[SeriesPoint] | None = Field(
         default=None,
         description="Your history (>=60 points). If omitted, built-in synthetic demo data is used.",
