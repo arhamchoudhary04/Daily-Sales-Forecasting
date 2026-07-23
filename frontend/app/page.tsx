@@ -121,18 +121,21 @@ export default function Page() {
 
       const chronos = res.models[CHRONOS]?.forecast;
       const xgb = res.models[XGBOOST]?.forecast;
+      const ens = res.models[ENSEMBLE]?.forecast;
 
       const bridge = hist[hist.length - 1];
       if (bridge) {
         bridge.actual = bridge.history;
         if (chronos) bridge.chronos = bridge.history;
         if (xgb) bridge.xgboost = bridge.history;
+        if (ens) bridge.ensemble = bridge.history;
       }
 
       const holdoutWindow: ChartPoint[] = res.dates.map((date, i) => {
         const point: ChartPoint = { date, actual: res.actual[i] };
         if (chronos) point.chronos = chronos.median[i];
         if (xgb) point.xgboost = xgb.median[i];
+        if (ens) point.ensemble = ens.median[i];
         return point;
       });
 
