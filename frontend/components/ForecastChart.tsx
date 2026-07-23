@@ -21,48 +21,80 @@ export interface ChartPoint {
   band?: [number, number]; // [lower, upper] prediction interval
 }
 
+const INK = "#14130f";
+const MUTED = "#8a8880";
+const GRID = "#e8e6df";
+const AXIS = "#d8d6cd";
+const CHRONOS = "#2a78d6";
+const XGBOOST = "#eb6834";
+
+const gbp = (v: number) => "£" + Math.round(v).toLocaleString("en-GB");
+const axisGbp = (v: any) =>
+  Math.abs(Number(v)) >= 1000 ? `£${Math.round(Number(v) / 1000)}k` : `£${Math.round(Number(v))}`;
+
 export default function ForecastChart({ data }: { data: ChartPoint[] }) {
   return (
-    <ResponsiveContainer width="100%" height={420}>
-      <ComposedChart data={data} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#232936" />
-        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#8b94a7" }} minTickGap={48} />
-        <YAxis tick={{ fontSize: 11, fill: "#8b94a7" }} width={48} />
+    <ResponsiveContainer width="100%" height={380}>
+      <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
+        <CartesianGrid vertical={false} stroke={GRID} />
+        <XAxis
+          dataKey="date"
+          tick={{ fontSize: 12, fill: MUTED }}
+          tickLine={false}
+          axisLine={{ stroke: AXIS }}
+          minTickGap={56}
+        />
+        <YAxis
+          tick={{ fontSize: 12, fill: MUTED }}
+          tickLine={false}
+          axisLine={false}
+          width={52}
+          tickFormatter={axisGbp}
+        />
         <Tooltip
           contentStyle={{
-            background: "#0f1420",
-            border: "1px solid #2a2f3a",
-            borderRadius: 8,
+            background: "#ffffff",
+            border: "1px solid #e8e6df",
+            borderRadius: 10,
+            boxShadow: "0 4px 16px rgba(20, 19, 15, 0.08)",
             fontSize: 12,
+            color: INK,
           }}
-          labelStyle={{ color: "#e2e8f0" }}
+          labelStyle={{ color: MUTED, marginBottom: 4 }}
+          formatter={(value: any, name: any) =>
+            Array.isArray(value)
+              ? [`${gbp(value[0])} – ${gbp(value[1])}`, name]
+              : [gbp(value as number), name]
+          }
         />
-        <Legend wrapperStyle={{ fontSize: 12 }} />
+        <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} iconType="plainline" />
         <Area
           dataKey="band"
           name="Prediction interval"
           stroke="none"
-          fill="#6366f1"
-          fillOpacity={0.15}
+          fill={CHRONOS}
+          fillOpacity={0.1}
           isAnimationActive={false}
         />
-        <Line dataKey="history" name="History" stroke="#64748b" dot={false} strokeWidth={1.5} />
-        <Line dataKey="actual" name="Actual" stroke="#e2e8f0" dot={false} strokeWidth={2} />
+        <Line dataKey="history" name="History" stroke={MUTED} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+        <Line dataKey="actual" name="Actual" stroke={INK} dot={false} strokeWidth={2} isAnimationActive={false} />
         <Line
           dataKey="chronos"
-          name="Chronos-Bolt (zero-shot)"
-          stroke="#818cf8"
+          name="Chronos-Bolt"
+          stroke={CHRONOS}
           dot={false}
-          strokeWidth={2.5}
+          strokeWidth={2}
           connectNulls
+          isAnimationActive={false}
         />
         <Line
           dataKey="xgboost"
-          name="XGBoost (trained)"
-          stroke="#34d399"
+          name="XGBoost"
+          stroke={XGBOOST}
           dot={false}
-          strokeWidth={2.5}
+          strokeWidth={2}
           connectNulls
+          isAnimationActive={false}
         />
       </ComposedChart>
     </ResponsiveContainer>

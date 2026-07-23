@@ -144,7 +144,7 @@ export default function Page() {
 
   const chartTitle =
     mode === "compare"
-      ? `Backtest — last ${compare?.dates.length ?? horizon} days held out`
+      ? `Most recent ${compare?.dates.length ?? horizon}-day window (actual vs forecast)`
       : mode === "forecast"
       ? `Sales forecast — next ${horizon} days`
       : "Daily sales history (UCI Online Retail II)";
@@ -153,17 +153,8 @@ export default function Page() {
     <main className="container">
       <header className="header">
         <h1>Daily Sales Forecasting</h1>
-        <p>Forecasting an online store's daily sales revenue: zero-shot Chronos-Bolt vs a trained XGBoost baseline.</p>
-        <p>Real data — ~2 years of daily sales (UCI Online Retail II).</p>
+        <p>Zero-shot Chronos-Bolt vs a trained XGBoost baseline, on ~2 years of real online-retail sales.</p>
       </header>
-
-      <div className="badges">
-        <span className="tag">Chronos-Bolt · zero-shot</span>
-        <span className="tag">XGBoost · trained</span>
-        <span className="tag">FastAPI</span>
-        <span className="tag">Next.js</span>
-        <span className="tag">Docker + Kubernetes</span>
-      </div>
 
       <section className="card">
         <div className="controls">
@@ -218,7 +209,9 @@ export default function Page() {
 
       {mode === "compare" && compare && (
         <section className="card">
-          <h2 className="section-title">Backtest metrics (lower is better)</h2>
+          <h2 className="section-title">
+            Backtest metrics — averaged over {compare.folds ?? "several"} rolling windows (lower is better)
+          </h2>
           <MetricsTable data={compare} />
         </section>
       )}
