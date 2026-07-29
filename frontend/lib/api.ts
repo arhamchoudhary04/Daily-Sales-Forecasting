@@ -28,13 +28,30 @@ export interface Metrics {
   rmse: number;
   mape: number;
   smape: number;
+  coverage: number;
+  pinball: number;
+  interval_width: number;
 }
 
 export interface CompareResponse {
   dates: string[];
   actual: number[];
   folds?: number;
+  /** Target band coverage in percent, e.g. 80. */
+  nominal_coverage?: number;
   models: Record<string, { forecast: ModelForecast; metrics: Metrics }>;
+}
+
+export interface ModelInfo {
+  source: "artifact" | "fit-on-demand";
+  model_path: string | null;
+  trained_at: string | null;
+  n_train_points: number | null;
+  train_start: string | null;
+  train_end: string | null;
+  data_fingerprint: string | null;
+  train_metrics: Record<string, number>;
+  notes: string[];
 }
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -55,8 +72,10 @@ export const runForecast = (horizon: number, model: string) =>
     body: JSON.stringify({ horizon, model }),
   });
 
-export const runCompare = (horizon: number) =>
+export const runCompare = (horizon: number, folds?: number) =>
   req<CompareResponse>("/api/compare", {
     method: "POST",
-    body: JSON.stringify({ horizon }),
+    body: JSON.stringify(folds === undefined ? { horizon } : { horizon, folds }),
   });
+
+export const getModelInfo = () => req<ModelInfo>("/api/model-info");

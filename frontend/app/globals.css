@@ -28,7 +28,8 @@ body {
 }
 
 .container {
-  max-width: 900px;
+  /* wide enough for the 8-column backtest table */
+  max-width: 1020px;
   margin: 0 auto;
   padding: 72px 28px 96px;
 }
@@ -167,18 +168,45 @@ button:disabled {
 }
 
 /* metrics table */
+
+/* scroll the table, not the page, on narrow viewports */
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
 .metrics {
   width: 100%;
+  min-width: 700px;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13px;
+}
+
+.table-note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.table-note strong {
+  font-weight: 500;
+  color: var(--ink-2);
 }
 
 .metrics th,
 .metrics td {
   text-align: right;
-  padding: 11px 14px;
+  padding: 11px 9px;
   border-bottom: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.metrics th:last-child,
+.metrics td:last-child {
+  padding-right: 2px;
 }
 
 .metrics th:first-child,
@@ -205,6 +233,45 @@ button:disabled {
 
 .metrics .best {
   font-weight: 600;
+}
+
+.metrics .muted {
+  color: var(--muted);
+}
+
+/* which model is serving requests */
+.provenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.provenance .tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f0efe9;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.provenance .tag.warn {
+  background: #fbf1e8;
+  color: #8a5a2b;
+}
+
+.provenance code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--ink-2);
 }
 
 .badge {

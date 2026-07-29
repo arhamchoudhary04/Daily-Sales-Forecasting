@@ -6,10 +6,12 @@ import type { ChartPoint } from "@/components/ForecastChart";
 import MetricsTable from "@/components/MetricsTable";
 import {
   getDemoSeries,
+  getModelInfo,
   runForecast,
   runCompare,
   type DemoSeries,
   type CompareResponse,
+  type ModelInfo,
 } from "@/lib/api";
 
 // Recharts needs the DOM, so keep the chart client-only.
@@ -33,6 +35,7 @@ function clampHorizon(value: number): number {
 
 export default function Page() {
   const [demo, setDemo] = useState<DemoSeries | null>(null);
+  const [info, setInfo] = useState<ModelInfo | null>(null);
   const [horizon, setHorizon] = useState(21);
   const [model, setModel] = useState<"both" | "chronos" | "xgboost" | "ensemble">("both");
 
@@ -56,6 +59,11 @@ export default function Page() {
         );
       })
       .catch((e) => setError(e?.message ?? String(e)));
+
+    // informational only, so a failure just hides the line
+    getModelInfo()
+      .then(setInfo)
+      .catch(() => setInfo(null));
   }, []);
 
   async function onRunForecast() {
@@ -110,8 +118,8 @@ export default function Page() {
     try {
       const res = await runCompare(horizon);
 
-      // backend backtests the same synthetic series, so the holdout lines up
-      // with the tail of demo
+      // The backend backtests the same bundled retail series we plotted, so its
+      // most-recent holdout window lines up with the tail of `demo`.
       const holdout = res.dates.length;
       const histEnd = Math.max(0, demo.dates.length - holdout);
       const start = Math.max(0, histEnd - HISTORY_WINDOW);
@@ -206,6 +214,27 @@ export default function Page() {
             </button>
           </div>
         </div>
+
+        {info && (
+          <div className="provenance">
+            <span className={info.source === "artifact" ? "tag" : "tag warn"}>
+              {info.source === "artifact" ? "trained artifact" : "fitted on demand"}
+            </span>
+            <span>
+              XGBoost model
+              {info.source === "artifact"
+                ? " loaded from the registry"
+                : " fitted at startup (no artifact found)"}
+              {info.n_train_points !== null && ` · ${info.n_train_points} training days`}
+              {info.train_end && ` through ${info.train_end}`}
+            </span>
+            {info.data_fingerprint && (
+              <code title="Hash of the training series — the API refuses a model trained on different data">
+                data {info.data_fingerprint}
+              </code>
+            )}
+          </div>
+        )}
       </section>
 
       {error && <div className="error">{error}</div>}
