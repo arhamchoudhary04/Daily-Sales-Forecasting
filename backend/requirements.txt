@@ -11,6 +11,9 @@ pydantic>=2.7,<3.0
 numpy>=1.26,<3.0
 pandas>=2.2,<4.0
 xgboost>=2.0,<4.0
+# xgboost only ships scikit-learn as an optional extra, but XGBRegressor (and
+# unpickling a saved one) needs it, so serving depends on it directly.
+scikit-learn>=1.4,<2.0
 joblib>=1.4,<2.0
 
 # --- foundation model (zero-shot forecasting) ---
