@@ -1,23 +1,26 @@
 """Train the XGBoost baseline, backtest it against Chronos-Bolt, log to MLflow.
 
-Usage:
+Writes the artifact the API loads at serve time (see app/registry.py). Usage:
+
     python -m training.train_xgboost --horizon 21 --mlflow
+    python -m training.train_xgboost --skip-chronos     # fast / offline
 """
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
-
-import joblib
 
 from app.data import load_retail_series
 from app.forecaster import XGBoostForecaster, chronos_forecast, evaluate_forecast
+from app.registry import model_path, save_model
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train + backtest forecasting models.")
     parser.add_argument("--horizon", type=int, default=21)
-    parser.add_argument("--output", type=str, default="app/models/xgb_model.joblib")
+    parser.add_argument(
+        "--output", type=str, default=None,
+        help="Artifact path (defaults to the registry location / $MODEL_PATH).",
+    )
     parser.add_argument("--mlflow", action="store_true", help="Log the run to MLflow")
     parser.add_argument("--skip-chronos", action="store_true", help="Skip the Chronos backtest (faster/offline)")
     args = parser.parse_args()
@@ -36,10 +39,14 @@ def main() -> None:
 
     # Refit on ALL data before saving so the served model uses full history.
     model = XGBoostForecaster().fit(df)
-    out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(model, out)
+    out = save_model(
+        model,
+        df,
+        path=args.output or model_path(),
+        train_metrics={f"holdout_{k}": v for k, v in xgb_metrics.items()},
+    )
     print(f"Saved model -> {out.resolve()}")
+    print("The API will load this on next start (GET /api/model-info to confirm).")
 
     if args.mlflow:
         import mlflow

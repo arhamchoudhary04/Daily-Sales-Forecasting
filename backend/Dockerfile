@@ -22,8 +22,13 @@ COPY app ./app
 COPY data ./data
 COPY training ./training
 
+# Bake the trained model into the image so the API loads an artifact instead of
+# fitting on first request. Chronos is skipped to keep the build offline.
+RUN python -m training.train_xgboost --skip-chronos
+
 # Run as a non-root user.
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser \
+    && chown -R appuser:appuser /app/app/models
 USER appuser
 
 EXPOSE 8000
