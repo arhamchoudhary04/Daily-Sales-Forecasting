@@ -35,6 +35,18 @@ const axisGbp = (v: any) =>
   Math.abs(Number(v)) >= 1000 ? `£${Math.round(Number(v) / 1000)}k` : `£${Math.round(Number(v))}`;
 
 export default function ForecastChart({ data }: { data: ChartPoint[] }) {
+  // Recharts legends every <Line> it's given, even an empty one, so only render
+  // the series this dataset actually contains.
+  const has = (key: keyof ChartPoint) => data.some((d) => d[key] != null);
+  const show = {
+    band: has("band"),
+    history: has("history"),
+    actual: has("actual"),
+    chronos: has("chronos"),
+    xgboost: has("xgboost"),
+    ensemble: has("ensemble"),
+  };
+
   return (
     <ResponsiveContainer width="100%" height={380}>
       <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 4 }}>
@@ -70,43 +82,55 @@ export default function ForecastChart({ data }: { data: ChartPoint[] }) {
           }
         />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 10 }} iconType="plainline" />
-        <Area
-          dataKey="band"
-          name="Prediction interval"
-          stroke="none"
-          fill={CHRONOS}
-          fillOpacity={0.1}
-          isAnimationActive={false}
-        />
-        <Line dataKey="history" name="History" stroke={MUTED} dot={false} strokeWidth={1.5} isAnimationActive={false} />
-        <Line dataKey="actual" name="Actual" stroke={INK} dot={false} strokeWidth={2} isAnimationActive={false} />
-        <Line
-          dataKey="chronos"
-          name="Chronos-Bolt"
-          stroke={CHRONOS}
-          dot={false}
-          strokeWidth={2}
-          connectNulls
-          isAnimationActive={false}
-        />
-        <Line
-          dataKey="xgboost"
-          name="XGBoost"
-          stroke={XGBOOST}
-          dot={false}
-          strokeWidth={2}
-          connectNulls
-          isAnimationActive={false}
-        />
-        <Line
-          dataKey="ensemble"
-          name="Ensemble"
-          stroke={ENSEMBLE}
-          dot={false}
-          strokeWidth={2.5}
-          connectNulls
-          isAnimationActive={false}
-        />
+        {show.band && (
+          <Area
+            dataKey="band"
+            name="Prediction interval"
+            stroke="none"
+            fill={CHRONOS}
+            fillOpacity={0.1}
+            isAnimationActive={false}
+          />
+        )}
+        {show.history && (
+          <Line dataKey="history" name="History" stroke={MUTED} dot={false} strokeWidth={1.5} isAnimationActive={false} />
+        )}
+        {show.actual && (
+          <Line dataKey="actual" name="Actual" stroke={INK} dot={false} strokeWidth={2} isAnimationActive={false} />
+        )}
+        {show.chronos && (
+          <Line
+            dataKey="chronos"
+            name="Chronos-Bolt"
+            stroke={CHRONOS}
+            dot={false}
+            strokeWidth={2}
+            connectNulls
+            isAnimationActive={false}
+          />
+        )}
+        {show.xgboost && (
+          <Line
+            dataKey="xgboost"
+            name="XGBoost"
+            stroke={XGBOOST}
+            dot={false}
+            strokeWidth={2}
+            connectNulls
+            isAnimationActive={false}
+          />
+        )}
+        {show.ensemble && (
+          <Line
+            dataKey="ensemble"
+            name="Ensemble"
+            stroke={ENSEMBLE}
+            dot={false}
+            strokeWidth={2.5}
+            connectNulls
+            isAnimationActive={false}
+          />
+        )}
       </ComposedChart>
     </ResponsiveContainer>
   );
