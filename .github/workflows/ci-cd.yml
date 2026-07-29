@@ -10,7 +10,7 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  test:
+  backend:
     name: Backend tests
     runs-on: ubuntu-latest
     steps:
@@ -26,16 +26,109 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
+
+      - name: Record resolved dependency versions
+        # requirements.txt uses ranges; download this artifact to pin an exact set
+        run: pip freeze > requirements.lock.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-resolved-versions
+          path: requirements.lock.txt
 
       - name: Run pytest
         # Chronos test skips unless RUN_CHRONOS_TESTS=1
         working-directory: backend
         run: pytest -q
 
+  frontend:
+    name: Frontend lint, types & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+        working-directory: frontend
+
+      - run: npm run lint
+        working-directory: frontend
+
+      - run: npm run typecheck
+        working-directory: frontend
+
+      # build on PRs too, so a type error can't reach main via the image job
+      - run: npm run build
+        working-directory: frontend
+        env:
+          BACKEND_URL: http://backend:8000
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # runtime advisories fail the job; dev-only ones are reported, not blocking
+      - name: npm audit (runtime dependencies)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=critical
+
+      - name: npm audit (full, informational)
+        working-directory: frontend
+        run: npm audit || true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pip-audit (backend)
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r backend/requirements.txt --skip-editable || true
+
+  docker:
+    name: Build images (PR smoke test)
+    needs: [backend, frontend]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      # no push; the backend build also exercises the model-training step
+      - name: Build backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   build-and-push:
     name: Build & push images
-    needs: test
+    needs: [backend, frontend]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
