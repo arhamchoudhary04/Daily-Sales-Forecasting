@@ -26,6 +26,12 @@ class ForecastResult:
 
 # --- metrics ---
 
+# The forecasters emit these quantile levels as (lower, median, upper).
+QUANTILE_LEVELS = (0.1, 0.5, 0.9)
+# Nominal coverage of the [lower, upper] band: 0.9 - 0.1.
+NOMINAL_COVERAGE = 80.0
+
+
 def evaluate_forecast(actual, predicted) -> dict[str, float]:
     """Point-forecast error metrics."""
     actual = np.asarray(actual, dtype=float)
@@ -40,6 +46,44 @@ def evaluate_forecast(actual, predicted) -> dict[str, float]:
         "rmse": round(float(np.sqrt(np.mean(err ** 2))), 4),
         "mape": round(mape, 4),
         "smape": round(float(np.mean(2 * np.abs(err) / (np.abs(actual) + np.abs(predicted) + 1e-8)) * 100), 4),
+    }
+
+
+def pinball_loss(actual, predicted, quantile: float) -> float:
+    """Asymmetric quantile loss. Lower is better."""
+    actual = np.asarray(actual, dtype=float)
+    predicted = np.asarray(predicted, dtype=float)
+    err = actual - predicted
+    return float(np.mean(np.maximum(quantile * err, (quantile - 1) * err)))
+
+
+def evaluate_interval(actual, lower, median, upper) -> dict[str, float]:
+    """Score the forecast band, not just the median.
+
+    Coverage is best *closest to* NOMINAL_COVERAGE rather than highest, since a
+    band of +/- infinity would cover 100%. Pinball loss is a proper scoring rule,
+    so it's the metric that can't be gamed by widening the band.
+    """
+    actual = np.asarray(actual, dtype=float)
+    lower = np.asarray(lower, dtype=float)
+    upper = np.asarray(upper, dtype=float)
+
+    inside = (actual >= lower) & (actual <= upper)
+    losses = [
+        pinball_loss(actual, q, level)
+        for q, level in zip((lower, median, upper), QUANTILE_LEVELS)
+    ]
+    return {
+        "coverage": round(float(np.mean(inside) * 100), 4),
+        "pinball": round(float(np.mean(losses)), 4),
+        "interval_width": round(float(np.mean(upper - lower)), 4),
+    }
+
+
+def score_forecast(actual, result: "ForecastResult") -> dict[str, float]:
+    return {
+        **evaluate_forecast(actual, result.median),
+        **evaluate_interval(actual, result.lower, result.median, result.upper),
     }
 
 
@@ -137,7 +181,10 @@ class XGBoostForecaster:
             values.append(yhat)
             dates.append(next_date)
 
-        band = 1.2816 * self._residual_std  # ~80% prediction interval
+        # ~80% interval assuming Gaussian residuals of constant width. Chronos
+        # predicts its quantiles per step, so it calibrates far better; the
+        # coverage column in the backtest shows the gap.
+        band = 1.2816 * self._residual_std
         return ForecastResult(
             model="xgboost",
             horizon=horizon,
@@ -162,6 +209,33 @@ def ensemble_forecast(a: ForecastResult, b: ForecastResult) -> ForecastResult:
     )
 
 
+MIN_TRAIN_POINTS = 60
+
+
+def backtest_windows(
+    n_points: int,
+    horizon: int,
+    folds: int,
+    step: int | None = None,
+    min_train: int = MIN_TRAIN_POINTS,
+) -> list[tuple[int, int]]:
+    """Rolling-origin windows as (start, end) index pairs, most recent first.
+
+    Each window tests df[start:end] after training on df[:start]. `step` defaults
+    to `horizon`, i.e. non-overlapping. Short windows are dropped, so the result
+    can be shorter than `folds`.
+    """
+    step = horizon if step is None else step
+    windows: list[tuple[int, int]] = []
+    for i in range(folds):
+        end = n_points - i * step
+        start = end - horizon
+        if start < min_train:
+            break
+        windows.append((start, end))
+    return windows
+
+
 def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
     """Rolling-window backtest: score each model over the last `folds`
     non-overlapping windows and average, and return the most-recent window
@@ -175,26 +249,23 @@ def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
     scores: dict[str, list[dict]] = {"chronos-bolt": [], "xgboost": [], "ensemble": []}
     recent: dict = {}
     recent_test = None
-    used = 0
 
-    for i in range(folds):
-        end = len(df) - i * horizon
-        start = end - horizon
-        if start < 60:
-            break
-        used += 1
+    windows = backtest_windows(len(df), horizon, folds)
+    for i, (start, end) in enumerate(windows):
         train, test = df.iloc[:start], df.iloc[start:end]
         actual = test["value"].tolist()
 
+        # Each fold trains on its own prefix, so these fits can't come from the
+        # registry cache.
         xgb = XGBoostForecaster().fit(train).predict(horizon)
-        scores["xgboost"].append(evaluate_forecast(actual, xgb.median))
+        scores["xgboost"].append(score_forecast(actual, xgb))
 
         chronos = None
         try:
             chronos = chronos_forecast(train["value"].tolist(), horizon)
-            scores["chronos-bolt"].append(evaluate_forecast(actual, chronos.median))
+            scores["chronos-bolt"].append(score_forecast(actual, chronos))
             ens = ensemble_forecast(chronos, xgb)
-            scores["ensemble"].append(evaluate_forecast(actual, ens.median))
+            scores["ensemble"].append(score_forecast(actual, ens))
         except Exception:  # noqa: BLE001 - Chronos is best-effort
             pass
 
@@ -204,6 +275,10 @@ def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
             if chronos is not None:
                 recent["chronos-bolt"] = chronos
                 recent["ensemble"] = ensemble_forecast(chronos, xgb)
+
+    used = len(windows)
+    if recent_test is None:
+        raise ValueError("Series too short to build a single backtest window.")
 
     def _avg(rows: list[dict]) -> dict:
         return {k: round(float(np.mean([r[k] for r in rows])), 4) for k in rows[0]}
@@ -219,5 +294,7 @@ def compare_models(df: pd.DataFrame, horizon: int, folds: int = 4) -> dict:
         "dates": [d.strftime("%Y-%m-%d") for d in recent_test["date"]],
         "actual": [round(v, 4) for v in recent_test["value"].tolist()],
         "folds": used,
+        # So the UI can judge coverage against its target instead of hardcoding it.
+        "nominal_coverage": NOMINAL_COVERAGE,
         "models": models,
     }
