@@ -1,18 +1,22 @@
 """FastAPI service: zero-shot (Chronos-Bolt) vs trained (XGBoost) forecasting."""
 from __future__ import annotations
 
+from dataclasses import asdict
+from functools import lru_cache
+
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .data import load_retail_series, load_series_from_records
 from .forecaster import XGBoostForecaster, chronos_forecast, compare_models, ensemble_forecast
+from .registry import fingerprint_series, get_bundled_forecaster, get_model_info
 from .schemas import CompareRequest, ForecastRequest
 
 app = FastAPI(
     title="Sales Forecasting API",
     description="Forecast daily online-retail sales with a zero-shot foundation model (Chronos-Bolt) and a trained XGBoost baseline.",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
@@ -23,19 +27,40 @@ app.add_middleware(
 )
 
 
-def _resolve_df(series) -> pd.DataFrame:
-    """Use the caller's series if given, else the built-in retail sales series."""
+def _resolve_df(series) -> tuple[pd.DataFrame, bool]:
+    """Return (frame, is_bundled); a caller's own series needs its own fit."""
     if series:
         df = load_series_from_records([{"date": p.date, "value": p.value} for p in series])
         if len(df) < 60:
             raise HTTPException(400, "Provide at least 60 data points for reliable forecasting.")
-        return df
-    return load_retail_series()
+        return df, False
+    return load_retail_series(), True
+
+
+def _xgb_forecast(df: pd.DataFrame, horizon: int, is_bundled: bool):
+    if is_bundled:
+        return get_bundled_forecaster().predict(horizon)
+    return XGBoostForecaster().fit(df).predict(horizon)
+
+
+@lru_cache(maxsize=16)
+def _compare_bundled(horizon: int, folds: int, _fingerprint: str) -> dict:
+    """Memoised: a backtest refits XGBoost and reruns Chronos once per fold.
+
+    The fingerprint is in the cache key so a regenerated CSV invalidates it.
+    """
+    return compare_models(load_retail_series(), horizon, folds=folds)
 
 
 @app.get("/health", tags=["ops"])
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/model-info", tags=["ops"])
+def model_info():
+    """Which XGBoost model is serving: a loaded artifact, or one fitted here."""
+    return asdict(get_model_info())
 
 
 @app.get("/api/demo-series", tags=["data"])
@@ -51,7 +76,7 @@ def demo_series(n_days: int = 730):
 @app.post("/api/forecast", tags=["forecast"])
 def forecast(req: ForecastRequest):
     """Forecast future values (no ground truth) with one, both, or the ensemble."""
-    df = _resolve_df(req.series)
+    df, is_bundled = _resolve_df(req.series)
     last = df["date"].iloc[-1]
     future_dates = [(last + pd.Timedelta(days=i + 1)).strftime("%Y-%m-%d") for i in range(req.horizon)]
 
@@ -66,7 +91,7 @@ def forecast(req: ForecastRequest):
 
     xgb = None
     if req.model in ("xgboost", "both", "ensemble"):
-        xgb = XGBoostForecaster().fit(df).predict(req.horizon)
+        xgb = _xgb_forecast(df, req.horizon, is_bundled)
 
     out: dict = {"horizon": req.horizon, "future_dates": future_dates, "models": {}}
     if req.model in ("chronos", "both") and chronos is not None:
@@ -83,8 +108,10 @@ def forecast(req: ForecastRequest):
 
 @app.post("/api/compare", tags=["forecast"])
 def compare(req: CompareRequest):
-    """Backtest: hold out recent points and score both models against the truth."""
-    df = _resolve_df(req.series)
+    """Backtest: hold out recent windows and score both models against the truth."""
+    df, is_bundled = _resolve_df(req.series)
     if len(df) <= req.horizon + 40:
         raise HTTPException(400, "Series too short for this horizon; add more history or reduce the horizon.")
-    return compare_models(df, req.horizon)
+    if is_bundled:
+        return _compare_bundled(req.horizon, req.folds, fingerprint_series(df))
+    return compare_models(df, req.horizon, folds=req.folds)
