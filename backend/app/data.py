@@ -1,9 +1,8 @@
-"""Data loading (real retail series + synthetic) and feature engineering."""
+"""Data loading (real retail series) and feature engineering."""
 from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 # daily online-retail sales series, built by backend/data/prepare_dataset.py
@@ -15,25 +14,6 @@ FEATURE_COLUMNS = [
     "roll_mean_7", "roll_mean_28", "roll_std_7",
     "dayofweek", "day", "month", "dayofyear",
 ]
-
-
-def generate_synthetic_series(
-    n_days: int = 730,
-    start_date: str = "2023-01-01",
-    seed: int = 42,
-) -> pd.DataFrame:
-    """Daily series with trend + weekly/yearly seasonality + noise."""
-    rng = np.random.default_rng(seed)
-    idx = pd.date_range(start=start_date, periods=n_days, freq="D")
-    t = np.arange(n_days)
-
-    trend = 0.05 * t
-    weekly = 8.0 * np.sin(2 * np.pi * t / 7)
-    yearly = 20.0 * np.sin(2 * np.pi * t / 365.25)
-    noise = rng.normal(0, 3.0, n_days)
-
-    value = 100.0 + trend + weekly + yearly + noise
-    return pd.DataFrame({"date": idx, "value": value})
 
 
 def load_series_from_records(records: list[dict]) -> pd.DataFrame:
@@ -60,7 +40,11 @@ def load_retail_series() -> pd.DataFrame:
 
 
 def make_supervised_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Turn a (date, value) series into a supervised table for tree models."""
+    """Turn a (date, value) series into a supervised table for tree models.
+
+    Rolling windows are shifted before aggregating so a row's own target never
+    leaks into its features. tests/test_features.py pins this down.
+    """
     out = df.copy()
     for lag in (1, 2, 3, 7, 14, 28):
         out[f"lag_{lag}"] = out["value"].shift(lag)
