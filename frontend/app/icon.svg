@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="7" fill="#14130f"/>
+  <!-- history (grey) then forecast (green), echoing the chart palette -->
+  <path d="M5 21.5 L9 17 L13 19.5 L17 11.5"
+        fill="none" stroke="#8a8880" stroke-width="2.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M17 11.5 L21 15 L27 7.5"
+        fill="none" stroke="#1baf7a" stroke-width="2.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="17" cy="11.5" r="2" fill="#f9f9f7"/>
+</svg>

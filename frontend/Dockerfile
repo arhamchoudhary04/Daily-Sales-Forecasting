@@ -2,8 +2,9 @@
 
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci 2>/dev/null || npm install
+COPY package.json package-lock.json ./
+# ci, not install, so lockfile drift fails the build
+RUN npm ci
 
 FROM node:20-alpine AS builder
 WORKDIR /app
