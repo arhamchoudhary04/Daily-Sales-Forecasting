@@ -1,0 +1,5 @@
+# Training / experiment-tracking extras. Kept out of requirements.txt so the
+# serving image doesn't ship MLflow's Flask/SQLAlchemy tree.
+-r requirements.txt
+
+mlflow>=2.14,<4.0
