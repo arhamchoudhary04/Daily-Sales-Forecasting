@@ -22,6 +22,12 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
+          env:
+            - name: CORS_ORIGINS
+              # browser origin is the ingress host, not the in-cluster frontend
+              # Service name; port-forward (localhost:3000) is covered by the
+              # image's own default, so only forecast.local needs adding here.
+              value: "http://forecast.local,http://localhost:3000"
           readinessProbe:
             httpGet:
               path: /health

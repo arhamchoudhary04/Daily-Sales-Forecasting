@@ -15,6 +15,18 @@ POINT_METRICS = ("mae", "rmse", "mape", "smape")
 INTERVAL_METRICS = ("coverage", "pinball", "interval_width")
 
 
+def test_cors_does_not_allow_any_origin():
+    r = client.get("/health", headers={"Origin": "http://evil.example"})
+    assert "access-control-allow-origin" not in r.headers
+    # the allowlist itself must never be a wildcard, regardless of who is asking
+    allow_origins = [
+        m.kwargs.get("allow_origins")
+        for m in app.user_middleware
+        if m.cls.__name__ == "CORSMiddleware"
+    ][0]
+    assert "*" not in allow_origins
+
+
 def test_health():
     r = client.get("/health")
     assert r.status_code == 200

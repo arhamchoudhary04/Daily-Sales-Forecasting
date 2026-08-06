@@ -1,6 +1,7 @@
 """FastAPI service: zero-shot (Chronos-Bolt) vs trained (XGBoost) forecasting."""
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from functools import lru_cache
 
@@ -19,11 +20,17 @@ app = FastAPI(
     version="1.1.0",
 )
 
+# The browser normally never calls this API cross-origin — Next's rewrites()
+# proxy /api same-origin — so this only matters for direct callers (curl, the
+# Swagger UI, a separate frontend). Comma-separated allowlist via env var;
+# defaults to local dev origins only, never a wildcard.
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten to your frontend origin in production
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[o.strip() for o in _cors_origins.split(",") if o.strip()],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
